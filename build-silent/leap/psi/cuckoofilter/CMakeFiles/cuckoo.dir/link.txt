@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcuckoo.a CMakeFiles/cuckoo.dir/hashutil.cc.o
+/usr/bin/ranlib libcuckoo.a

@@ -192,7 +192,7 @@ std::vector<size_t> SpringNRPSIClient::Online(std::vector<block> &elements) {
       osuCrypto::span<uint8_t>(ole_choices.data(), ole_choices.sizeBytes());
   coproto::sync_wait(socket.send(oleSpan));
 
-  std::vector<uint16_t> ole_enc(1152 * elements.size(), 0);
+  std::vector<uint32_t> ole_enc(1152 * elements.size(), 0);
   coproto::sync_wait(socket.recv(ole_enc));
   std::vector<uint16_t> y(N * elements.size(), 0);
   idx = 0;
@@ -266,6 +266,8 @@ std::vector<size_t> SpringNRPSIClient::Online(std::vector<block> &elements) {
     }
     prf_out[i] = mask[i] ^ BCH128to64(biased);
   }
+  // keep the OPRF outputs (used by the batched OPRF benchmark)
+  last_outputs = prf_out;
   std::vector<uint64_t> res;
   /*
    * finalize and do intersection

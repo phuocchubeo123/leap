@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.4.1)
 set(TEST_SRCS
   oprf-ref.cpp
+  oprf-batch.cpp
+  psi-bench.cpp
   test-psi.cpp
   baseOT/KyberOtPreprocessing.cpp
   baseOT/SimplestOtPreprocessing.cpp

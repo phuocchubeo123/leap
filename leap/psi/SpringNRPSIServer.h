@@ -33,6 +33,9 @@ public:
   void Base();
   void Online();
 
+  // server PRF keys (used by the batched OPRF benchmark for testing)
+  const std::vector<Subset128> &keys() const { return private_keys; }
+
 private:
   PRNG prng;
   cp::Socket socket;

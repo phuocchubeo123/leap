@@ -26,7 +26,7 @@ RUN python3 build.py --install
  
 # # # --------------------- clone, build coproto ----------------------
 WORKDIR /home/
-RUN git clone https://github.com/Visa-Research/coproto
+RUN git clone https://github.com/ladnir/coproto
  
 WORKDIR /home/coproto
 RUN git checkout 1d88e90

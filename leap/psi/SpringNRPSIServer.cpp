@@ -225,7 +225,7 @@ void SpringNRPSIServer::Online() {
   //////////////////////////////////////////////////
 
   std::vector<uint16_t> blinder(N * num_client_elements_, 0);
-  std::vector<uint16_t> ole_enc(1152 * num_client_elements_, 0);
+  std::vector<uint32_t> ole_enc(1152 * num_client_elements_, 0);
 
   BitVector ole_corr(1152 * num_client_elements_);
   auto oleSpan =

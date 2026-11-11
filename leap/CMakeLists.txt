@@ -18,6 +18,12 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO " -O3 -g -ggdb -rdynamic")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -ggdb -rdynamic")
 
+# OT extension for the PSI/batched OPRF code: IKNP (default) or SilentOT (see psi/params.h)
+option(LEAP_SILENT "use SilentOT instead of IKNP for OT extension" OFF)
+if(LEAP_SILENT)
+  add_compile_definitions(LEAP_SILENT)
+endif()
+
 set(SRCS ${SRCS}
   oprf/BCH.cpp
   oprf/ntt-falcon.cpp

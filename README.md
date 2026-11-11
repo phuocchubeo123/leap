@@ -91,7 +91,25 @@ The following binaries in
 
 ### Table 4: OPRF Communication and Computation Complexity
 The binary `build/leap/tests/oprf-ref` is generated using `leap/tests/oprf-ref.cpp`. The output includes the PRF output to verify correctness and hashing the OPRF output to remove the algebraic structure.
-IP and port are hardcoded in the file for a simpler user interface. 
+
+#### Running client and server on two machines
+`oprf-ref` takes the role, address and port on the command line (the original
+single-process behaviour is available as `local`):
+```sh
+# server machine (listens)
+leap/tests/oprf-ref server 0.0.0.0 12112 [reps]
+# client machine (connects)
+leap/tests/oprf-ref client <server-ip> 12112 [reps]
+# both roles in one process, as in the original binary
+leap/tests/oprf-ref local 127.0.0.1 12112 [reps]
+```
+`reps` (default 1) runs that many full evaluations (base OT + OT extension + online) over one
+connection; the client prints per-evaluation numbers and averages. Both parties must use the same
+`reps`. Networking uses the coproto `AsioSocket` (TCP, `TCP_NODELAY`) the code already used. A
+1-byte barrier, which is neither timed nor counted, aligns the parties before each evaluation. Byte
+counts are coproto's socket counters and include its 8-byte per-message header. After each
+evaluation the server sends the plaintext PRF value of the fixed test input. The client compares
+it with its OPRF output. This check runs outside the measured region.
 
 This table is *Table 3* in the conference version.
 

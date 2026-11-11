@@ -34,6 +34,9 @@ public:
   void Base(size_t num_elements);
   std::vector<size_t> Online(std::vector<block> &elements);
 
+  // OPRF outputs of the last Online() call, in input order
+  std::vector<uint64_t> last_outputs;
+
 private:
   std::vector<Subset128> ot_ss;
   std::vector<block> ots_;
