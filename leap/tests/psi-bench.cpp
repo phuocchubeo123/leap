@@ -24,9 +24,10 @@
  * only): the client's first `intersection` elements are spread over the server
  * set, the rest are fresh.
  *
- * Usage:
- *   psi-bench server 0.0.0.0     <port> <client_size> [server_size] [intersection]
- *   psi-bench client <server-ip> <port> <client_size> [server_size] [intersection]
+ * Usage (chunk_elements: run Base() + Online() per chunk of the client set, to bound memory;
+ *        offline and oprf are then sums over chunks):
+ *   psi-bench server 0.0.0.0     <port> <client_size> [server_size] [intersection] [chunk_elements]
+ *   psi-bench client <server-ip> <port> <client_size> [server_size] [intersection] [chunk_elements]
  */
 #include <algorithm>
 #include <array>
@@ -82,6 +83,31 @@ struct Meter {
   }
 };
 
+// Sum of several measured intervals (one per chunk) of the same phase.
+struct Total {
+  double wall = 0, cpu = 0;
+  size_t sent = 0, recv = 0;
+  template <typename F> void run(cp::Socket &sock, F &&f) {
+    auto w0 = std::chrono::steady_clock::now();
+    double c0 = cpu_ms();
+    size_t s0 = sock.bytesSent(), r0 = sock.bytesReceived();
+    f();
+    wall += std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - w0)
+                .count();
+    cpu += cpu_ms() - c0;
+    sent += sock.bytesSent() - s0;
+    recv += sock.bytesReceived() - r0;
+  }
+  void report(const char *role, const char *phase, size_t batch,
+              size_t chunks) const {
+    std::cout << "RESULT protocol=leap role=" << role << " phase=" << phase
+              << " batch=" << batch << " chunks=" << chunks
+              << " wall_ms=" << wall << " cpu_ms=" << cpu << " sent=" << sent
+              << " recv=" << recv << std::endl;
+  }
+};
+
 // The Leap input for evaluation j of PSI element x: H(x, j), 128 bits.
 static osuCrypto::block leap_input(const osuCrypto::block &x, uint64_t j) {
   osuCrypto::RandomOracle ro(sizeof(osuCrypto::block));
@@ -110,7 +136,7 @@ int main(int argc, char **argv) {
   if (argc < 5) {
     std::cout << "usage: " << argv[0]
               << " {server|client} {ip} {port} {client_size} [server_size]"
-                 " [intersection]"
+                 " [intersection] [chunk_elements]"
               << std::endl;
     return -1;
   }
@@ -120,11 +146,15 @@ int main(int argc, char **argv) {
   size_t server_size = argc > 5 ? std::stoull(argv[5]) : client_size;
   size_t intersection =
       argc > 6 ? std::stoull(argv[6]) : std::min(client_size, server_size) / 2;
+  size_t chunk = argc > 7 ? std::stoull(argv[7]) : client_size;
   if ((role != "server" && role != "client") || client_size == 0 ||
-      server_size == 0 || intersection > std::min(client_size, server_size)) {
+      server_size == 0 || intersection > std::min(client_size, server_size) ||
+      chunk == 0) {
     std::cout << "bad arguments" << std::endl;
     return -1;
   }
+  chunk = std::min(chunk, client_size);
+  const size_t chunks = (client_size + chunk - 1) / chunk;
   std::vector<osuCrypto::block> server_set, client_set;
   make_sets(client_size, server_size, intersection, server_set, client_set);
   const block dummy = toBlock((const uint8_t *)"ffffffff88888888");
@@ -133,24 +163,26 @@ int main(int argc, char **argv) {
     client_set = {};
     cp::AsioSocket sock = coproto::asioConnect(ip, true);
     LEAP::SpringNRPSIServer server(sock, 1);
-    // key generation; the PSI filter of this dummy set is not used
+    // key generation (once, so every chunk evaluates the same PRF); the PSI
+    // filter of this dummy set is not used
     std::vector<block> dummy_set{dummy};
     server.Setup(dummy_set);
 
-    barrier(sock, true);
-    {
-      Meter m(sock);
-      server.Base();
-      m.report("server", "offline", client_size);
+    // Chunks: Base() then Online() for each slice of the client set; offline
+    // and oprf are the sums over chunks (each interval after a barrier).
+    Total offline, oprf;
+    for (size_t c = 0; c < chunks; c++) {
+      barrier(sock, true);
+      offline.run(sock, [&] { server.Base(); });
+      barrier(sock, true);
+      oprf.run(sock, [&] {
+        server.Online();
+        coproto::sync_wait(sock.flush());
+      });
     }
+    offline.report("server", "offline", client_size, chunks);
+    oprf.report("server", "oprf", client_size, chunks);
     barrier(sock, true);
-    Meter online(sock);
-    {
-      Meter m(sock);
-      server.Online();
-      coproto::sync_wait(sock.flush());
-      m.report("server", "oprf", client_size);
-    }
     {
       // PRF values of the server set, in the clear, shuffled
       Meter m(sock);
@@ -164,8 +196,16 @@ int main(int argc, char **argv) {
       coproto::sync_wait(sock.send(enc));
       coproto::sync_wait(sock.flush());
       m.report("server", "set", client_size);
+      std::cout << "RESULT protocol=leap role=server phase=online batch="
+                << client_size << " chunks=" << chunks << " wall_ms="
+                << oprf.wall + std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - m.wall0)
+                                   .count()
+                << " cpu_ms=" << oprf.cpu + (cpu_ms() - m.cpu0)
+                << " sent=" << oprf.sent + (sock.bytesSent() - m.sent0)
+                << " recv=" << oprf.recv + (sock.bytesReceived() - m.recv0)
+                << std::endl;
     }
-    online.report("server", "online", client_size);
     return 0;
   }
 
@@ -174,28 +214,30 @@ int main(int argc, char **argv) {
   LEAP::SpringNRPSIClient client(sock);
   client.Setup();
 
-  barrier(sock, false);
-  {
-    Meter m(sock);
-    client.Base(client_size * kEvalsPerElement);
-    m.report("client", "offline", client_size);
-  }
-  barrier(sock, false);
-  Meter online(sock);
   std::vector<std::pair<Out128, size_t>> outputs(client_size);
-  {
-    Meter m(sock);
-    std::vector<block> inputs(client_size * kEvalsPerElement);
-    for (size_t e = 0; e < client_size; e++)
-      for (size_t j = 0; j < kEvalsPerElement; j++)
-        inputs[e * kEvalsPerElement + j] = leap_input(client_set[e], j);
-    client.Online(inputs);
-    for (size_t e = 0; e < client_size; e++)
-      outputs[e] = {Out128{client.last_outputs[e * kEvalsPerElement],
-                           client.last_outputs[e * kEvalsPerElement + 1]},
-                    e};
-    m.report("client", "oprf", client_size);
+  Total offline, oprf;
+  for (size_t c = 0; c < chunks; c++) {
+    const size_t first = c * chunk, len = std::min(chunk, client_size - first);
+    barrier(sock, false);
+    offline.run(sock, [&] { client.Base(len * kEvalsPerElement); });
+    barrier(sock, false);
+    oprf.run(sock, [&] {
+      std::vector<block> inputs(len * kEvalsPerElement);
+      for (size_t e = 0; e < len; e++)
+        for (size_t j = 0; j < kEvalsPerElement; j++)
+          inputs[e * kEvalsPerElement + j] =
+              leap_input(client_set[first + e], j);
+      client.Online(inputs);
+      for (size_t e = 0; e < len; e++)
+        outputs[first + e] = {
+            Out128{client.last_outputs[e * kEvalsPerElement],
+                   client.last_outputs[e * kEvalsPerElement + 1]},
+            first + e};
+    });
   }
+  offline.report("client", "offline", client_size, chunks);
+  oprf.report("client", "oprf", client_size, chunks);
+  barrier(sock, false);
   std::vector<size_t> found;
   {
     Meter m(sock);
@@ -209,8 +251,16 @@ int main(int argc, char **argv) {
         found.push_back(it->second);
     }
     m.report("client", "set", client_size);
+    std::cout << "RESULT protocol=leap role=client phase=online batch="
+              << client_size << " chunks=" << chunks << " wall_ms="
+              << oprf.wall + std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - m.wall0)
+                                 .count()
+              << " cpu_ms=" << oprf.cpu + (cpu_ms() - m.cpu0)
+              << " sent=" << oprf.sent + (sock.bytesSent() - m.sent0)
+              << " recv=" << oprf.recv + (sock.bytesReceived() - m.recv0)
+              << std::endl;
   }
-  online.report("client", "online", client_size);
 
   // correctness: exactly the first `intersection` client elements match
   std::sort(found.begin(), found.end());
@@ -221,7 +271,7 @@ int main(int argc, char **argv) {
             << " server_size=" << server_size
             << " intersection=" << intersection << " found=" << found.size()
             << " oprf_evaluations=" << client_size * kEvalsPerElement
-            << std::endl;
+            << " chunks=" << chunks << std::endl;
   std::cout << "CORRECTNESS protocol=leap " << (ok ? "OK" : "FAIL")
             << " (intersection " << found.size() << ", expected "
             << intersection << ")" << std::endl;

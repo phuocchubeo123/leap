@@ -88,6 +88,8 @@ void SpringNRPSIClient::Base(size_t num_elements) {
   osuCrypto::span<osuCrypto::block> otSpan(ots_.data(), ots_.size());
   coproto::sync_wait(OTeRecv.receive(ot_choices_, otSpan, prng, socket));
 
+  // Benchmark port: Base() may run once per chunk on the same object (ot_ss is appended below).
+  ot_ss.clear();
   for (size_t j = 0; j < num_elements * N; ++j) {
     Subset128 privkey(otSpan[j], &shake256);
     ot_ss.push_back(privkey);

@@ -132,6 +132,10 @@ void SpringNRPSIServer::Base() {
   // one for subset-sum, one for each gilboa coefficient bit, one for each
   // rounding bit
   ots_.resize((N * 19) * num_client_elements_);
+  // Benchmark port: Base() may run once per chunk on the same object, so drop the previous
+  // chunk's subset-sum masks (they are appended below).
+  r_0.clear();
+  r_1.clear();
   osuCrypto::span<std::array<osuCrypto::block, 2>> otSpan(ots_.data(),
                                                           ots_.size());
   coproto::sync_wait(otExtSender.send(otSpan, prng, socket));
@@ -166,8 +170,9 @@ void SpringNRPSIServer::Base() {
     }
   }
 
-  round_r0.resize(N * num_client_elements_, 0);
-  round_r1.resize(N * num_client_elements_, 0);
+  // assign, not resize: the values are OR-ed together below, so a previous chunk's must not remain
+  round_r0.assign(N * num_client_elements_, 0);
+  round_r1.assign(N * num_client_elements_, 0);
   for (size_t j = 0; j < N * num_client_elements_; ++j) {
     for (size_t l = 0; l < 9; ++l) {
       auto *extract =
