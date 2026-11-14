@@ -7,6 +7,7 @@
 #include <leap/oprf/Subset128.h>
 #include <leap/oprf/ntt-falcon.h>
 #include <leap/psi/cuckoofilter/cuckoofilter.h>
+#include <leap/psi/chunked_io.h>
 #include <leap/psi/params.h>
 
 #ifdef KYBER_OT

@@ -150,8 +150,8 @@ std::vector<size_t> SpringNRPSIClient::Online(std::vector<block> &elements) {
   auto recvSpan = osuCrypto::span<uint8_t>((uint8_t *)received.data(),
                                            elements.size() * 128 * N);
 
-  coproto::sync_wait(socket.send(serverBvSpan));
-  coproto::sync_wait(socket.recv(recvSpan));
+  send_chunked(socket, serverBvSpan);
+  recv_chunked(socket, recvSpan);
   uint8_t *r_ptr = received.data();
   for (size_t i = 0; i < elements.size(); ++i) {
     for (size_t j = 0; j < N; ++j) {
@@ -192,10 +192,10 @@ std::vector<size_t> SpringNRPSIClient::Online(std::vector<block> &elements) {
   ole_choices = ole_corr ^ ole_choices;
   auto oleSpan =
       osuCrypto::span<uint8_t>(ole_choices.data(), ole_choices.sizeBytes());
-  coproto::sync_wait(socket.send(oleSpan));
+  send_chunked(socket, oleSpan);
 
   std::vector<uint32_t> ole_enc(1152 * elements.size(), 0);
-  coproto::sync_wait(socket.recv(ole_enc));
+  recv_chunked(socket, ole_enc);
   std::vector<uint16_t> y(N * elements.size(), 0);
   idx = 0;
   for (unsigned short &j : y) {
@@ -245,9 +245,9 @@ std::vector<size_t> SpringNRPSIClient::Online(std::vector<block> &elements) {
 #ifdef LEAP_MICRO_BENCHMARKS
   auto cc_rounding_wait = time.setTimePoint("round-wait");
 #endif
-  coproto::sync_wait(socket.send(roundSpan));
-  coproto::sync_wait(socket.recv(enc_bits));
-  coproto::sync_wait(socket.recv(mask));
+  send_chunked(socket, roundSpan);
+  recv_chunked(socket, enc_bits);
+  recv_chunked(socket, mask);
 #ifdef LEAP_MICRO_BENCHMARKS
   auto cc_round = time.setTimePoint("round");
 #endif

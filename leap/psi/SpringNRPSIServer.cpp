@@ -200,7 +200,7 @@ void SpringNRPSIServer::Online() {
   osuCrypto::BitVector subsum_choices(num_client_elements_ * N);
   auto serverSpan = osuCrypto::span<uint8_t>(subsum_choices.data(),
                                              subsum_choices.sizeBytes());
-  coproto::sync_wait(socket.recv(serverSpan));
+  recv_chunked(socket, serverSpan);
 
   std::vector<Subset128> s_prime(num_client_elements_);
   std::vector<uint8_t> send_poly(128 * N * num_client_elements_, 0);
@@ -224,7 +224,7 @@ void SpringNRPSIServer::Online() {
   }
   auto polySpan = osuCrypto::span<uint8_t>((uint8_t *)send_poly.data(),
                                            128 * N * num_client_elements_);
-  coproto::sync_wait(socket.send(polySpan));
+  send_chunked(socket, polySpan);
   //////////////////////////////////////////////////
   //////////////// OLE    //////////////////////////
   //////////////////////////////////////////////////
@@ -235,7 +235,7 @@ void SpringNRPSIServer::Online() {
   BitVector ole_corr(1152 * num_client_elements_);
   auto oleSpan =
       osuCrypto::span<uint8_t>(ole_corr.data(), ole_corr.sizeBytes());
-  coproto::sync_wait(socket.recv(oleSpan));
+  recv_chunked(socket, oleSpan);
 
   size_t idx = 0;
   for (size_t i = 0; i < num_client_elements_; ++i) {
@@ -261,7 +261,7 @@ void SpringNRPSIServer::Online() {
     }
   }
 
-  coproto::sync_wait(socket.send(ole_enc));
+  send_chunked(socket, ole_enc);
 
   uint16_t *blinder_ptr = blinder.data();
   for (auto i = 0; i < num_client_elements_; ++i) {
@@ -275,7 +275,7 @@ void SpringNRPSIServer::Online() {
   BitVector round_corr(num_client_elements_ * 1152);
   auto roundSpan =
       osuCrypto::span<uint8_t>(round_corr.data(), round_corr.sizeBytes());
-  coproto::sync_wait(socket.recv(roundSpan));
+  recv_chunked(socket, roundSpan);
 
   // 128 poly coefficients, for each we have 257 options: (128*257)/64=257*2
 
@@ -350,7 +350,7 @@ void SpringNRPSIServer::Online() {
     }
   }
 
-  coproto::sync_wait(socket.send(enc_bits));
+  send_chunked(socket, enc_bits);
 
   std::vector<uint64_t> bch_mask(num_client_elements_, 0);
   uint64_t *mask_ptr = mask.data();
@@ -358,7 +358,7 @@ void SpringNRPSIServer::Online() {
     bch_mask[i] = BCH128to64(mask_ptr);
     mask_ptr += 2;
   }
-  coproto::sync_wait(socket.send(bch_mask));
+  send_chunked(socket, bch_mask);
 
   auto time4 = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> trans_time = time4 - time3;

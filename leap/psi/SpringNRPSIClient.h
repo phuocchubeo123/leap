@@ -6,6 +6,7 @@
 #include <leap/oprf/PRF.h>
 #include <leap/oprf/Subset128.h>
 #include <leap/oprf/ntt-falcon.h>
+#include <leap/psi/chunked_io.h>
 #include <leap/psi/params.h>
 #ifdef KYBER_OT
 #include <libOTe/Base/MasnyRindalKyber.h>
